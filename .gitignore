@@ -210,6 +210,9 @@ wandb/
 # AtomWorks / Foundry local mirrors (large; keep out of git)
 .foundry_mirrors/
 
+# direnv local overrides (machine-specific; keep out of git)
+.envrc.local
+
 # Logs
 logs/
 

@@ -1,0 +1,17 @@
+# Machine-specific overrides (gitignored)
+#
+# Copy to `.envrc.local` and edit for your machine.
+#
+# This is sourced by `.envrc` (direnv) after the repo-local `.venv` is activated.
+#
+# Common use: point AtomWorks/Foundry to local CCD/PDB mirrors.
+
+# Example: databases server (Linux)
+# export CCD_MIRROR_PATH="/runtime/databases/foundry/ccd"
+# export PDB_MIRROR_PATH="/runtime/databases/foundry/pdb"
+
+# Example: workstation (mounted mirrors)
+# export CCD_MIRROR_PATH="$HOME/mounts/foundry_databases/ccd"
+# export PDB_MIRROR_PATH="$HOME/mounts/foundry_databases/pdb"
+
+
