@@ -2,7 +2,9 @@
 name = "molecore-foundry-env"
 version = "0.0.0"
 description = "Portable uv environment spec for molecore_foundry (macOS CPU + Linux GPU opt-in)."
-requires-python = ">=3.12"
+# NOTE: AtomWorks pins dependencies (e.g. pyarrow==17) that do not ship macOS
+# wheels for Python 3.13+. Keep this environment on Python 3.12.x.
+requires-python = ">=3.12,<3.13"
 dependencies = [
   # Minimal, safe defaults (usable even without ML stacks)
   "pip>=24",
@@ -23,6 +25,7 @@ dependencies = [
   # AtomWorks is central for Foundry-style biomolecular workflows.
   # Keep the base install as `atomworks` (IO-focused; no torch requirement).
   "atomworks",
+  "toolz",
 
   # Central structure + ML runtime (CPU-safe defaults; Linux GPU machines can override per README)
   "biotite>=0.41",
