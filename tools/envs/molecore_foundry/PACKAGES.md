@@ -85,6 +85,8 @@ These were present and are kept as an optional group (`zipbio11_dev`) in the env
 
 ## PyRosetta + PyMOL notes
 
-- **PyRosetta** ❌: Not available for Python 3.12 (Rosetta Commons limitation). The `pyrosetta-installer` is included for when compatibility is added.
+- **PyRosetta**: Availability is **platform + Python-version specific** (prebuilt binaries).
+  On this Linux server we verified installation works with **Python 3.12** via `pyrosetta-installer`.
+  If it fails elsewhere, it usually means no matching build is published for that OS/Python.
 - **PyMOL** ✅: `pymolpy3` wrapper included. Install system PyMOL separately for full functionality.
 

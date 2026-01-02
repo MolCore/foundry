@@ -40,15 +40,23 @@ uv pip install --upgrade torch torchvision torchaudio --index-url https://downlo
 uv pip install --upgrade torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 ```
 
-### PyRosetta (optional)
+### PyRosetta (optional; installable on this Linux server in Python 3.12)
 
-Install installer + run it:
+**Important:** PyRosetta is distributed as **prebuilt platform/Python-specific binaries**. Availability can differ
+by OS and Python version. On this Linux server we verified that `pyrosetta-installer` can install a **Python 3.12**
+wheel successfully.
+
+Install + verify:
 
 ```bash
-uv pip install pyrosetta-installer
-python -c "import pyrosetta_installer; pyrosetta_installer.install_pyrosetta(silent=True)"
+uv pip install --upgrade pyrosetta-installer
+python -c "import pyrosetta_installer; pyrosetta_installer.install_pyrosetta(silent=False, skip_if_installed=True)"
 python -c "import pyrosetta; pyrosetta.init('-mute all'); print('PyRosetta OK')"
 ```
+
+Notes:
+- This is a large download (~GB).
+- You may need RosettaCommons/PyRosetta credentials configured (often via `~/.netrc`) depending on your setup.
 
 ### PyMOL (optional)
 

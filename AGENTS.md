@@ -11,4 +11,9 @@
 - Global default env is a **uv virtualenv** at `~/.venvs/molecore_foundry`.
 - Repo-local env (when working in this repo) is `./.venv` and is activated via `direnv` using `.envrc`.
 
+### PyRosetta note (important)
+- PyRosetta availability depends on what **prebuilt binaries** RosettaCommons publishes for your OS/Python.
+  On this Linux server we verified PyRosetta can be installed into the default **Python 3.12** env via
+  `pyrosetta-installer`, but you may still need credentials and other machines/OSes may differ.
+
 

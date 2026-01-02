@@ -86,23 +86,24 @@ python -c "import torch; print('torch', torch.__version__); print('cuda?', torch
 
 ---
 
-## PyRosetta (not available for Python 3.12)
+## PyRosetta (optional; works on this Linux server with Python 3.12)
 
-**Status: ❌ Not compatible with Python 3.12**
+PyRosetta distribution is **platform + Python-version specific** (prebuilt binaries). On this Linux
+server, we verified that `pyrosetta-installer` can install a **Python 3.12** wheel successfully.
 
-PyRosetta builds for Python 3.12 are not yet available from Rosetta Commons. The environment includes `pyrosetta-installer` for when compatibility is added.
-
-### Future availability
-When PyRosetta supports Python 3.12, you can install it:
+### Install (global env or any active venv)
 
 ```bash
-python -c "import pyrosetta_installer; pyrosetta_installer.install_pyrosetta()"
+uv pip install --upgrade pyrosetta-installer
+python -c "import pyrosetta_installer; pyrosetta_installer.install_pyrosetta(silent=False, skip_if_installed=True)"
+python -c "import pyrosetta; pyrosetta.init('-mute all'); print('PyRosetta OK')"
 ```
 
-### Alternative approaches
-- Use Python 3.11 for PyRosetta-specific work
-- Consider web-based alternatives like Rosetta Online
-- Use the ColabFold/RoseTTAFold servers for structure prediction
+Notes:
+- This is a **large download** (~GB).
+- You may need RosettaCommons/PyRosetta credentials configured (often via `~/.netrc`) depending on your setup.
+- If install fails on a different machine/OS, it usually means **no matching prebuilt build exists** for that
+  platform/Python combination. In that case, use a dedicated env for a supported Python version.
 
 ---
 
