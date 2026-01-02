@@ -1,0 +1,14 @@
+#
+# Example machine-local overrides for direnv.
+#
+# Copy to `.envrc.local` and edit paths for your system.
+#
+# NOTE: `.envrc.local` is git-ignored on purpose.
+#
+
+# AtomWorks database mirrors (optional but recommended)
+# On Ariel's macOS: ~/mounts/runtime/databases/foundry/{ccd,pdb}
+export CCD_MIRROR_PATH="$HOME/mounts/runtime/databases/foundry/ccd"
+export PDB_MIRROR_PATH="$HOME/mounts/runtime/databases/foundry/pdb"
+
+

@@ -13,7 +13,8 @@ It is designed to work well with the Foundry repo at:
 ## Prerequisites
 
 - Install `uv` (one-time).
-- Standardize on **Python 3.12** (matches Foundry’s `requires-python = ">=3.12"`).
+- **Recommended on macOS**: use **Python 3.12** for AtomWorks. Some AtomWorks dependencies
+  (notably `pyarrow==17` and some scientific wheels) may not be available for Python 3.13+ on macOS.
 
 ---
 
@@ -110,6 +111,19 @@ python -c "import pyrosetta_installer; pyrosetta_installer.install_pyrosetta()"
 
 Foundry relies on AtomWorks; it’s also very useful as a “daily driver” for structure IO/cleanup.
 See [`RosettaCommons/atomworks`](https://github.com/RosettaCommons/atomworks).
+
+### AtomWorks database mirrors (CCD / PDB)
+
+Some `atomworks` functionality expects local mirrors. These are **machine-specific paths** and should
+not be committed into the repo.
+
+- **Recommended repo pattern**:
+  - copy `/Users/ariel/dev/molCore/foundry/.envrc.local.example` → `.envrc.local`
+  - edit paths for your machine
+  - run `direnv allow` in the repo root
+
+On Ariel's macOS setup:
+`$HOME/mounts/runtime/databases/foundry/{ccd,pdb}`
 
 - Installed by default (IO-only; no torch requirement):
 
