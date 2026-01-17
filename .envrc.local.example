@@ -14,4 +14,17 @@
 # export CCD_MIRROR_PATH="$HOME/mounts/foundry_databases/ccd"
 # export PDB_MIRROR_PATH="$HOME/mounts/foundry_databases/pdb"
 
+# Example: Ariel's macOS (your current setup)
+# export CCD_MIRROR_PATH="$HOME/mounts/runtime/databases/foundry/ccd"
+# export PDB_MIRROR_PATH="$HOME/mounts/runtime/databases/foundry/pdb"
+
+# Optional: prompt label (platform/user specific)
+# If you want a consistent prefix like "(u-foundry)" while inside this repo,
+# you can do it here. This is intentionally local-only because prompt theming
+# differs across shells (bash vs zsh) and machines.
+#
+# Bash example:
+# export VIRTUAL_ENV_DISABLE_PROMPT=1
+# export PS1="(u-foundry) ${PS1}"
+
 

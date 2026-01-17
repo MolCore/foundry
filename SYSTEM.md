@@ -41,7 +41,19 @@ AtomWorks reads:
 
 Recommended conventions:
 - **Databases server**: `/runtime/databases/foundry/{ccd,pdb}`
-- **Workstation**: `$HOME/mounts/foundry_databases/{ccd,pdb}` or repo-local `.foundry_mirrors/`
+- **Workstation**: a mounted mirror under `$HOME/mounts/...` or repo-local `.foundry_mirrors/`
+
+### Platform-specific paths belong in `.envrc.local`
+Examples (choose one and put it in `.envrc.local`):
+- **Linux server**: `/runtime/databases/foundry/{ccd,pdb}`
+- **macOS workstation (Ariel)**: `$HOME/mounts/runtime/databases/foundry/{ccd,pdb}`
+- **other workstation layout**: `$HOME/mounts/foundry_databases/{ccd,pdb}`
+
+This keeps the repo portable while still supporting per-machine configuration.
+
+## Prompt customization (optional, machine-local)
+If you want your shell prompt to show a consistent label like `(u-foundry)` while inside this repo,
+set it in `.envrc.local`. Prompt theming is shell/user specific, so it should **not** be committed.
 
 ## What should be gitignored
 - `.envrc.local`
