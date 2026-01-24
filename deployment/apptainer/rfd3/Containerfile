@@ -4,8 +4,8 @@ From: nvidia/cuda:12.1.0-devel-ubuntu22.04
 %environment
     export CUDA_HOME=/usr/local/cuda
     export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
-    export PATH=/usr/local/cuda/bin:/opt/conda/envs/rfd3/bin:$PATH
-    export PYTHONPATH=/opt/conda/envs/rfd3/lib/python3.10/site-packages:$PYTHONPATH
+    export PATH=/usr/local/cuda/bin:/opt/rfd3/bin:$PATH
+    export VIRTUAL_ENV=/opt/rfd3
 
     # Database paths - will be overridden by bind mounts at runtime
     export CCD_MIRROR_PATH=/runtime/databases/foundry/ccd
@@ -18,13 +18,17 @@ From: nvidia/cuda:12.1.0-devel-ubuntu22.04
     export LANG=C.UTF-8
 
 %post
-    # Update and install minimal system dependencies
+    # Update and install minimal system dependencies including Python 3.10
     apt-get update && apt-get upgrade -y
     apt-get install -y \
         wget \
         curl \
         git \
         build-essential \
+        python3.10 \
+        python3.10-venv \
+        python3.10-dev \
+        python3-pip \
         libffi-dev \
         libssl-dev \
         zlib1g-dev \
@@ -37,29 +41,23 @@ From: nvidia/cuda:12.1.0-devel-ubuntu22.04
     apt-get clean
     rm -rf /var/lib/apt/lists/*
 
-    # Install Miniconda (minimal Python distribution)
-    wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /tmp/miniconda.sh
-    bash /tmp/miniconda.sh -b -p /opt/conda
-    rm /tmp/miniconda.sh
+    # Create Python virtual environment with Python 3.10
+    python3.10 -m venv /opt/rfd3
 
-    # Initialize conda
-    . /opt/conda/etc/profile.d/conda.sh
+    # Activate virtual environment
+    . /opt/rfd3/bin/activate
 
-    # Create minimal RFD3 environment with Python 3.10
-    conda create -n rfd3 python=3.10 -y
-    conda activate rfd3
+    # Upgrade pip
+    pip install --no-cache-dir --upgrade pip setuptools wheel
 
-    # Install PyTorch with CUDA 12.1 support (MINIMAL - only torch, no vision/audio)
-    conda install pytorch pytorch-cuda=12.1 -c pytorch -c nvidia -y
+    # Install PyTorch with CUDA 12.1 support (MINIMAL - only torch)
+    pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cu121
 
     # Install foundry with RFD3 - let it pull minimal dependencies
     pip install --no-cache-dir rc-foundry[rfd3]
 
     # Download RFD3 checkpoint to container (one-time ~500MB download)
     foundry install rfd3 --checkpoint-dir /root/.foundry/checkpoints
-
-    # Clean conda cache to reduce image size
-    conda clean -afy
 
     # Create working directories for bind mounts
     mkdir -p /workspace/inputs
@@ -70,23 +68,24 @@ From: nvidia/cuda:12.1.0-devel-ubuntu22.04
 
 %runscript
     #!/bin/bash
-    . /opt/conda/etc/profile.d/conda.sh
-    conda activate rfd3
+    . /opt/rfd3/bin/activate
     exec "$@"
 
 %labels
     Author="molCore - Protein Design Intelligence"
-    Version="1.0.0"
+    Version="1.0.1"
     Description="RFDiffusion3 minimal container for all-atom protein design"
     Model="RFD3"
     CUDA="12.1"
     Python="3.10"
+    Method="venv"
 
 %help
     RFDiffusion3 (RFD3) Apptainer Container
     ========================================
 
     Minimal container for all-atom biomolecular design with RFD3.
+    Uses Python 3.10 venv (no Conda) for simplicity.
 
     Usage:
     ------
