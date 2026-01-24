@@ -64,16 +64,24 @@ for CIF_FILE in "$OUTPUT_DIR"/*.cif*; do
         # Validate with biotite (if available in container)
         apptainer exec "$CONTAINER_SIF" python -c "
 import sys
+import gzip
 from pathlib import Path
+
+cif_path = Path('$CIF_FILE')
 
 # Check if biotite is available
 try:
     from biotite.structure.io import load_structure
 except ImportError:
     # Fallback: just check if file is readable
-    cif_path = Path('$CIF_FILE')
     if cif_path.exists() and cif_path.stat().st_size > 0:
-        content = cif_path.read_text()
+        # Handle gzipped files
+        if str(cif_path).endswith('.gz'):
+            with gzip.open(cif_path, 'rt') as f:
+                content = f.read()
+        else:
+            content = cif_path.read_text()
+
         if 'ATOM' in content or '_atom_site' in content:
             print('✓ $BASENAME - Valid CIF format (basic check)')
             sys.exit(0)
@@ -83,9 +91,19 @@ except ImportError:
     sys.exit(1)
 
 # Full validation with biotite
-cif_path = Path('$CIF_FILE')
 try:
-    structure = load_structure(str(cif_path))
+    # Decompress if needed
+    if str(cif_path).endswith('.gz'):
+        import tempfile
+        with gzip.open(cif_path, 'rb') as gz_file:
+            with tempfile.NamedTemporaryFile(mode='wb', suffix='.cif', delete=False) as tmp_file:
+                tmp_file.write(gz_file.read())
+                tmp_path = tmp_file.name
+        structure = load_structure(tmp_path)
+        Path(tmp_path).unlink()  # Clean up temp file
+    else:
+        structure = load_structure(str(cif_path))
+
     n_atoms = structure.array_length()
     n_residues = len(set(structure.res_id))
 
