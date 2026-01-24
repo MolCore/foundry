@@ -60,20 +60,22 @@ Modal volumes:
 2. Deploy: `modal deploy rfd3_app.py`
 3. Test: `modal run rfd3_app.py::test`
 
-## CI/CD (Future)
+## CI/CD
 
-Automated deployment on model updates:
-```yaml
-# .github/workflows/deploy-rfd3.yml
-on:
-  push:
-    paths: ['models/rfd3/**']
-jobs:
-  - Build Apptainer container
-  - Push to borg:/runtime/containers/
-  - Deploy Modal app
-  - Update workflow repo registry
-```
+Automated deployment on model updates. See **[CICD.md](./CICD.md)** for complete documentation.
+
+**Quick overview**:
+- Each model owns both Apptainer and Modal deployment configs
+- GitHub Actions automatically builds and deploys on model updates
+- Self-hosted runner on borg for Apptainer builds
+- Modal deployment via `modal deploy` command
+- Workflow repo registry updated with container metadata
+
+**Trigger conditions**:
+- Model code changes (e.g., `models/rfd3/**`)
+- Deployment config changes
+- Manual workflow dispatch
+- Scheduled weekly rebuilds
 
 ## Current Status
 
