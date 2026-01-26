@@ -15,7 +15,7 @@ The CI/CD pipeline automatically:
 3. 📦 Deploys to `/runtime/containers/rfd3_latest.sif` with versioning
 4. 🗃️  Archives previous version to `/runtime/containers/legacy/`
 5. 📝 Updates workflow repository registry
-6. 🧹 Cleans up old versions (keeps 5 most recent)
+6. 🧹 Cleans up old .sif files (keeps 3 most recent, preserves all JSON metadata)
 
 ## Versioning Strategy
 
@@ -214,14 +214,10 @@ The workflow automatically runs on:
    - Changes to `deployment/modal/rfd3/**`
    - Changes to `.github/workflows/deploy-rfd3.yml`
 
-2. **Weekly scheduled builds** (Sundays 2 AM UTC):
-   - Picks up dependency updates
-   - Validates container still builds
-   - Cleans up old legacy versions
-
-3. **Manual dispatch** (as tested above):
+2. **Manual dispatch** (as tested above):
    - On-demand rebuilds
    - Testing changes
+   - Includes optional cleanup of old legacy .sif files (keeps 3 most recent)
 
 ### 4.2 Test Automatic Trigger
 
@@ -378,12 +374,17 @@ git push
 
 ## Maintenance
 
-### Weekly Tasks (Automated)
+### Automatic Cleanup
 
-The workflow automatically runs weekly (Sundays 2 AM UTC) to:
-- Rebuild container with latest dependencies
-- Test container still works
-- Clean up old legacy versions (keeps 5 most recent)
+Legacy cleanup runs automatically when you manually trigger the workflow:
+- Removes old .sif files (keeps 3 most recent)
+- Preserves ALL .json metadata files (they're tiny and valuable for history)
+
+To trigger cleanup:
+1. Go to: https://github.com/MolCore/foundry/actions/workflows/deploy-rfd3.yml
+2. Click "Run workflow"
+3. Select production branch
+4. Click "Run workflow"
 
 ### Manual Cleanup
 
@@ -392,14 +393,16 @@ If you need to manually clean up legacy versions:
 ```bash
 cd /runtime/containers/legacy
 
-# List versions by date
+# List .sif files by date
 ls -lht rfd3_*.sif
 
-# Remove specific version
-rm rfd3_<UUID>.sif rfd3_<UUID>.json
+# Remove specific .sif file (keep JSON for history)
+rm rfd3_<UUID>.sif
 
-# Or keep only newest N versions
-ls -t rfd3_*.sif | tail -n +6 | xargs rm -f
+# Or keep only newest 3 .sif files
+ls -t rfd3_*.sif | tail -n +4 | xargs rm -f
+
+# JSON files are preserved - they're small and contain valuable version history
 ```
 
 ### Monitor Disk Usage
@@ -427,11 +430,12 @@ du -sh /runtime/containers/rfd3_*.sif
 ## Summary
 
 After setup, the CI/CD pipeline:
-- ✅ Automatically builds on code changes
-- ✅ Validates every build with tests
+- ✅ Automatically builds on code changes (production branch)
+- ✅ Validates every build with comprehensive tests
 - ✅ Versions containers with UUID and metadata
 - ✅ Archives previous versions for rollback
-- ✅ Updates workflow registry
-- ✅ Cleans up old versions weekly
+- ✅ Updates workflow registry via PR
+- ✅ Cleans up old .sif files on manual trigger (keeps 3 most recent)
+- ✅ Preserves all JSON metadata for complete version history
 
 **Result**: Fully automated, reliable deployments with complete version history and easy rollback.

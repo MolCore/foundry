@@ -67,8 +67,7 @@ CI/CD pipeline triggers on:
 
 1. **Model code changes**: Any changes to `models/rfd3/`, `models/mpnn/`, etc.
 2. **Deployment config changes**: Changes to `deployment/apptainer/` or `deployment/modal/`
-3. **Manual trigger**: Workflow dispatch for rebuilds
-4. **Scheduled builds**: Weekly rebuilds to pick up security updates
+3. **Manual trigger**: Workflow dispatch for rebuilds and optional cleanup
 
 ## GitHub Actions Workflows
 
@@ -89,9 +88,12 @@ on:
       - 'deployment/modal/rfd3/**'
       - '.github/workflows/deploy-rfd3.yml'
   workflow_dispatch:
-  schedule:
-    # Weekly rebuild on Sundays at 2 AM UTC
-    - cron: '0 2 * * 0'
+    inputs:
+      force_rebuild:
+        description: 'Force rebuild even if container exists'
+        required: false
+        type: boolean
+        default: false
 
 env:
   MODEL_NAME: rfd3
@@ -279,18 +281,17 @@ jobs:
             This PR updates the workflow registry with the latest container metadata.
 ```
 
-### Workflow 2: Database Synchronization
+### Workflow 2: Database Synchronization (Optional - Future)
 
-**File**: `.github/workflows/sync-databases.yml`
+**File**: `.github/workflows/sync-databases.yml` (not implemented yet)
+
+This optional workflow can automate database updates:
 
 ```yaml
 name: Sync Databases
 
 on:
-  schedule:
-    # Daily at 3 AM UTC
-    - cron: '0 3 * * *'
-  workflow_dispatch:
+  workflow_dispatch:  # Manual trigger only
 
 env:
   BORG_HOST: borg

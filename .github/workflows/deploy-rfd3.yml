@@ -16,9 +16,6 @@ on:
         required: false
         type: boolean
         default: false
-  schedule:
-    # Weekly rebuild on Sundays at 2 AM UTC
-    - cron: '0 2 * * 0'
 
 env:
   MODEL_NAME: rfd3
@@ -339,39 +336,36 @@ print(f\"CUDA_VERSION={data['environment']['cuda_version']}\")
     name: Cleanup Old Legacy Containers
     runs-on: self-hosted
     needs: build-apptainer
-    if: github.event_name == 'schedule'  # Only on scheduled builds
+    if: github.event_name == 'workflow_dispatch'  # Only on manual dispatch
     timeout-minutes: 10
 
     steps:
       - name: Cleanup old legacy containers
         run: |
           LEGACY_DIR="/runtime/containers/legacy"
-          KEEP_VERSIONS=5
+          KEEP_VERSIONS=3
 
-          echo "Cleaning up legacy containers..."
-          echo "Keeping most recent $KEEP_VERSIONS versions"
+          echo "Cleaning up legacy .sif containers..."
+          echo "Keeping most recent $KEEP_VERSIONS .sif files"
+          echo "Preserving ALL .json metadata files (minimal disk usage)"
 
           # Count current legacy versions
           LEGACY_COUNT=$(ls -1 "$LEGACY_DIR"/${{ env.MODEL_NAME }}_*.sif 2>/dev/null | wc -l)
-          echo "Found $LEGACY_COUNT legacy versions"
+          echo "Found $LEGACY_COUNT legacy .sif versions"
 
           if [[ $LEGACY_COUNT -gt $KEEP_VERSIONS ]]; then
             REMOVE_COUNT=$((LEGACY_COUNT - KEEP_VERSIONS))
-            echo "Removing $REMOVE_COUNT oldest versions..."
+            echo "Removing $REMOVE_COUNT oldest .sif files..."
 
-            # Remove oldest versions (keep newest KEEP_VERSIONS)
+            # Remove oldest .sif versions (keep newest KEEP_VERSIONS)
+            # But preserve JSON files - they're small and valuable for history
             ls -1t "$LEGACY_DIR"/${{ env.MODEL_NAME }}_*.sif | tail -n +$((KEEP_VERSIONS + 1)) | while read old_file; do
               echo "  Removing: $old_file"
               rm -f "$old_file"
-
-              # Also remove corresponding JSON if it exists
-              json_file="${old_file%.sif}.json"
-              if [[ -f "$json_file" ]]; then
-                rm -f "$json_file"
-              fi
             done
 
             echo "✓ Cleanup complete"
+            echo "✓ Preserved all .json metadata files for version history"
           else
             echo "No cleanup needed (only $LEGACY_COUNT versions)"
           fi
