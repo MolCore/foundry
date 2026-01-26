@@ -2,44 +2,56 @@
 RFDiffusion3 Modal App
 
 Specialized container for RFD3 backbone generation.
-Hardware: A100 (40GB or 80GB) for diffusion models.
+Hardware: L4 (24GB) or A100 (40GB/80GB) for diffusion models.
+
+Storage Strategy:
+- Image: Python, PyTorch, RFD3 package, checkpoint (~500MB), CCD database (~2GB)
+- Volume (results): Generated structures and metadata (persistent)
+- Volume (pdb-cache): Optional PDB structure cache (lazy loading, LRU)
+- On-demand: Fetch PDB structures from RCSB as needed
+
+See: /docs/MODAL_STORAGE_ARCHITECTURE.md
 """
 
 import modal
+import os
+from pathlib import Path
 
 # ============================================================================
-# Container Image: RFD3 only
+# Container Image: RFD3 with minimal dependencies
 # ============================================================================
 
 app = modal.App("foundry-rfd3")
 
-# Optimized image with ONLY RFD3 dependencies
+# Optimized image: ONLY essential RFD3 dependencies
 rfd3_image = (
     modal.Image.debian_slim(python_version="3.12")
-    .apt_install("wget", "git")
-    .pip_install(
-        "torch>=2.0.0",
-        "numpy",
-        "scipy",
-        # Add specific RFD3 dependencies here
-        # "rc-foundry[rfd3]",  # If foundry supports model-specific installs
+    .apt_install(
+        "wget",
+        "git",
+        "build-essential",  # For compiling some Python packages
     )
-    # Download ONLY RFD3 checkpoint (not all models)
+    .pip_install(
+        "torch>=2.5.0",  # PyTorch with CUDA support
+        "rc-foundry[rfd3]",  # RFD3 with minimal dependencies
+    )
     .run_commands(
-        "foundry install rfd3 --checkpoint-dir /root/.foundry/checkpoints"
+        # Download RFD3 checkpoint during image build (one-time ~500MB)
+        "foundry install rfd3 --checkpoint-dir /root/.foundry/checkpoints",
+        # Note: CCD database will be downloaded by foundry install automatically
     )
 )
 
-# Optional: Volume for databases (PDB/CCD subset)
-# Shared across all foundry apps
-database_volume = modal.Volume.from_name(
-    "foundry-databases",
+# Persistent volume for generated structures and metadata
+results_volume = modal.Volume.from_name(
+    "foundry-results",
     create_if_missing=True
 )
 
-# Optional: Volume for results
-results_volume = modal.Volume.from_name(
-    "foundry-results",
+# Optional: PDB cache volume for frequently used structures
+# Lazy loading: fetch from RCSB on first use, cache for future
+pdb_cache_volume = modal.Volume.from_name(
+    "foundry-pdb-cache",
     create_if_missing=True
 )
 
@@ -49,161 +61,217 @@ results_volume = modal.Volume.from_name(
 
 @app.function(
     image=rfd3_image,
-    gpu="L4",  # 20GB VRAM, ~$0.60/hr (upgrade to A100 if needed)
-    timeout=1800,  # 30 minutes max
+    gpu="L4",  # 24GB VRAM, ~$0.60/hr (upgrade to A100 if needed)
+    timeout=3600,  # 60 minutes max (for larger batches)
     volumes={
-        "/databases": database_volume,
+        "/pdb_cache": pdb_cache_volume,
         "/results": results_volume,
     },
 )
 def generate_backbones(
-    target_pdb: str,
+    design_spec: dict,
     num_designs: int = 100,
-    design_config: dict = None,
+    diffusion_batch_size: int = 16,
     output_dir: str = "/results/backbones",
+    dump_trajectories: bool = False,
 ):
     """
     Generate protein backbones using RFDiffusion3.
 
     Args:
-        target_pdb: PDB string or path to target structure
-        num_designs: Number of backbone variants to generate
-        design_config: Optional RFD3 configuration dict
-            Example: {
-                "num_steps": 50,
-                "temperature": 1.0,
-                "constraint_type": "motif_scaffolding",
-                # ... other RFD3 parameters
+        design_spec: RFD3 design specification dict
+            Example (de novo monomer):
+            {
+                "my_design": {
+                    "length": "80-100"
+                }
             }
+
+            Example (motif scaffolding):
+            {
+                "scaffold_7v11": {
+                    "input": "7v11.pdb",  # PDB ID or file path
+                    "ligand": "OQO",
+                    "contig": "A431"
+                }
+            }
+
+            Example (partial diffusion):
+            {
+                "partial_design": {
+                    "input": "7v11.pdb",
+                    "ligand": "OQO",
+                    "partial_t": 10.0,
+                    "contig": "A431"
+                }
+            }
+
+        num_designs: Total number of designs to generate (split into batches)
+        diffusion_batch_size: Batch size for diffusion sampling (affects GPU memory)
         output_dir: Where to save backbones (on volume)
+        dump_trajectories: Whether to save intermediate trajectory steps
 
     Returns:
         List of dicts: [
             {
-                "backbone_id": "design_001",
-                "pdb_string": "ATOM ...",
-                "path": "/results/backbones/design_001.pdb",
-                "confidence": 0.85,
+                "example_id": "my_design_0_model_0",
+                "cif_path": "/results/backbones/my_design_0_model_0.cif.gz",
+                "metadata": {...},  # RFD3 output metadata
             },
             ...
         ]
     """
-    import os
-    from pathlib import Path
+    import json
+    import tempfile
     import torch
+    from rfd3.engine import RFD3InferenceEngine, RFD3InferenceConfig
 
-    # Import foundry RFD3 (adjust based on actual foundry API)
-    # TODO: Replace with actual foundry imports
-    # from foundry.models.rfd3 import RFDiffusion3
-    # from atomworks import Structure
+    print("=" * 60)
+    print("RFD3 Backbone Generation on Modal")
+    print("=" * 60)
+    print(f"Design spec: {list(design_spec.keys())}")
+    print(f"Target designs: {num_designs}")
+    print(f"Batch size: {diffusion_batch_size}")
+    print("")
 
-    print(f"🚀 Starting RFD3 generation: {num_designs} backbones")
-    print(f"   GPU available: {torch.cuda.is_available()}")
+    # GPU info
+    print(f"GPU available: {torch.cuda.is_available()}")
     if torch.cuda.is_available():
-        print(f"   GPU: {torch.cuda.get_device_name(0)}")
-        print(f"   GPU memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
+        print(f"GPU: {torch.cuda.get_device_name(0)}")
+        print(f"GPU memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
+    print("")
 
-    # Set environment variables for databases
-    os.environ["CCD_MIRROR_PATH"] = "/databases/ccd"
-    os.environ["PDB_MIRROR_PATH"] = "/databases/pdb"
+    # Setup PDB cache environment
+    os.environ["PDB_MIRROR_PATH"] = "/pdb_cache"
+    # CCD should be in image already from foundry install
 
     # Create output directory
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
-    # ========================================================================
-    # TODO: Replace with actual RFD3 inference code
-    # ========================================================================
+    # Write design spec to temporary JSON file
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        json.dump(design_spec, f, indent=2)
+        input_json_path = f.name
 
-    # Example structure (replace with real implementation):
-    # device = "cuda" if torch.cuda.is_available() else "cpu"
-    # model = RFDiffusion3.from_pretrained("rfd3-base")
-    # model = model.to(device)
-    # model.eval()
-
-    # # Load target structure
-    # if target_pdb.startswith("ATOM"):
-    #     target = Structure.from_pdb_string(target_pdb)
-    # else:
-    #     target = Structure.from_pdb(target_pdb)
-
-    # # Configure design parameters
-    # config = design_config or {}
-    #
-    # backbones = []
-    # for i in range(num_designs):
-    #     with torch.no_grad():
-    #         backbone = model.generate(
-    #             target=target,
-    #             num_steps=config.get("num_steps", 50),
-    #             temperature=config.get("temperature", 1.0),
-    #             **config
-    #         )
-    #
-    #     # Save to volume
-    #     backbone_id = f"design_{i+1:04d}"
-    #     pdb_path = output_path / f"{backbone_id}.pdb"
-    #     backbone.to_pdb(pdb_path)
-    #
-    #     backbones.append({
-    #         "backbone_id": backbone_id,
-    #         "pdb_string": backbone.to_pdb_string(),
-    #         "path": str(pdb_path),
-    #         "confidence": backbone.confidence_score(),  # If available
-    #     })
-    #
-    #     if (i + 1) % 10 == 0:
-    #         print(f"   Generated {i+1}/{num_designs} backbones")
+    print(f"Input spec: {input_json_path}")
+    print(f"Output dir: {output_path}")
+    print("")
 
     # ========================================================================
-    # PLACEHOLDER: Remove when implementing
+    # Run RFD3 Inference
     # ========================================================================
-    print("⚠️  WARNING: Using placeholder RFD3 implementation")
-    print("   Replace with actual foundry RFD3 inference code")
 
+    # Calculate number of batches needed
+    n_batches = (num_designs + diffusion_batch_size - 1) // diffusion_batch_size
+
+    print(f"Running RFD3 inference:")
+    print(f"  Batches: {n_batches}")
+    print(f"  Batch size: {diffusion_batch_size}")
+    print(f"  Total designs: ~{n_batches * diffusion_batch_size}")
+    print("")
+
+    # Configure RFD3 inference engine
+    config = RFD3InferenceConfig(
+        ckpt_path="rfd3",  # Use foundry-installed checkpoint
+        diffusion_batch_size=diffusion_batch_size,
+        skip_existing=False,  # Generate fresh designs each time
+        dump_trajectories=dump_trajectories,
+        dump_prediction_metadata_json=True,
+        prevalidate_inputs=True,
+        verbose=True,
+    )
+
+    # Initialize engine
+    print("Initializing RFD3 engine...")
+    engine = RFD3InferenceEngine(**config)
+    print("✓ Engine initialized")
+    print("")
+
+    # Run inference
+    print("Generating backbones...")
+    try:
+        engine.run(
+            inputs=input_json_path,
+            out_dir=str(output_path),
+            n_batches=n_batches,
+        )
+        print("✓ Inference complete")
+    except Exception as e:
+        print(f"❌ ERROR during inference: {e}")
+        raise
+    finally:
+        # Cleanup temp input file
+        Path(input_json_path).unlink(missing_ok=True)
+
+    print("")
+
+    # ========================================================================
+    # Collect Results
+    # ========================================================================
+
+    print("Collecting outputs...")
     backbones = []
-    for i in range(min(num_designs, 5)):  # Limit to 5 for testing
-        backbone_id = f"design_{i+1:04d}"
-        pdb_path = output_path / f"{backbone_id}.pdb"
 
-        # Placeholder PDB content
-        pdb_content = f"REMARK RFD3 placeholder design {backbone_id}\nEND\n"
-        pdb_path.write_text(pdb_content)
+    # Find all generated CIF files
+    cif_files = sorted(output_path.glob("*.cif.gz"))
+
+    for cif_path in cif_files:
+        example_id = cif_path.stem.replace(".cif", "")
+        json_path = cif_path.with_suffix("").with_suffix(".json")
+
+        # Load metadata if available
+        metadata = {}
+        if json_path.exists():
+            with open(json_path) as f:
+                metadata = json.load(f)
 
         backbones.append({
-            "backbone_id": backbone_id,
-            "pdb_string": pdb_content,
-            "path": str(pdb_path),
-            "confidence": 0.85,
+            "example_id": example_id,
+            "cif_path": str(cif_path),
+            "metadata": metadata,
         })
-    # ========================================================================
 
-    # Commit changes to volume
+    print(f"✓ Collected {len(backbones)} structures")
+    print("")
+
+    # Commit changes to volume (persist results)
+    print("Committing results to volume...")
     results_volume.commit()
+    print("✓ Volume committed")
+    print("")
 
-    print(f"✅ RFD3 complete: Generated {len(backbones)} backbones")
+    print("=" * 60)
+    print(f"✅ RFD3 Complete: Generated {len(backbones)} backbones")
+    print("=" * 60)
+
     return backbones
 
 
 @app.function(
     image=rfd3_image,
     gpu="L4",
-    timeout=1800,
+    timeout=600,  # 10 minutes for quick single design
 )
-def generate_single_backbone(
-    target_pdb: str,
-    design_config: dict = None,
+def generate_single_design(
+    design_spec: dict,
+    dump_trajectories: bool = False,
 ):
     """
-    Generate a single backbone (for testing or special cases).
+    Generate a single design (for testing or quick prototyping).
+
+    Args:
+        design_spec: RFD3 design specification (see generate_backbones docstring)
+        dump_trajectories: Whether to save trajectory
 
     Returns:
         dict: Single backbone result
     """
     results = generate_backbones.local(
-        target_pdb=target_pdb,
+        design_spec=design_spec,
         num_designs=1,
-        design_config=design_config,
+        diffusion_batch_size=1,
+        dump_trajectories=dump_trajectories,
     )
     return results[0] if results else None
 
@@ -213,60 +281,96 @@ def generate_single_backbone(
 # ============================================================================
 
 @app.local_entrypoint()
-def test(num_designs: int = 5):
+def test(num_designs: int = 2):
     """
-    Test RFD3 generation with a small example.
+    Test RFD3 generation with a simple de novo monomer design.
 
     Usage:
-        modal run modal_apps/foundry_rfd3.py::test --num-designs 5
+        modal run modal_apps/foundry_rfd3.py::test --num-designs 2
     """
     print("🧪 Testing RFD3 Modal app...")
+    print("")
 
-    # Example target (replace with real PDB)
-    target_pdb = "ATOM      1  N   ALA A   1       0.000   0.000   0.000  1.00  0.00           N  \nEND\n"
+    # Simple test: de novo monomer
+    design_spec = {
+        "test_monomer": {
+            "length": "80-100"
+        }
+    }
 
     backbones = generate_backbones.remote(
-        target_pdb=target_pdb,
+        design_spec=design_spec,
         num_designs=num_designs,
+        diffusion_batch_size=2,
     )
 
-    print(f"\n✅ Test complete!")
+    print("")
+    print("✅ Test complete!")
     print(f"   Generated {len(backbones)} backbones")
-    for bb in backbones[:3]:  # Show first 3
-        print(f"   - {bb['backbone_id']}: confidence={bb['confidence']:.2f}")
+    print("")
+    print("Outputs:")
+    for bb in backbones:
+        print(f"   - {bb['example_id']}")
+        print(f"     CIF: {bb['cif_path']}")
+        if bb.get('metadata'):
+            print(f"     Metadata: {len(bb['metadata'])} fields")
 
     return backbones
 
 
 @app.local_entrypoint()
 def generate(
-    target_pdb_path: str,
+    design_json_path: str,
     num_designs: int = 100,
+    diffusion_batch_size: int = 16,
     output_dir: str = "/results/backbones",
+    dump_trajectories: bool = False,
 ):
     """
-    Generate backbones from a target PDB file.
+    Generate backbones from a design specification JSON file.
 
     Usage:
+        # Create design_spec.json:
+        # {
+        #   "my_design": {
+        #     "length": "80-100"
+        #   }
+        # }
+
         modal run modal_apps/foundry_rfd3.py::generate \\
-            --target-pdb-path target.pdb \\
-            --num-designs 100
+            --design-json-path design_spec.json \\
+            --num-designs 100 \\
+            --diffusion-batch-size 16
     """
-    from pathlib import Path
+    import json
 
-    # Read target PDB
-    target_pdb = Path(target_pdb_path).read_text()
+    # Read design spec
+    with open(design_json_path) as f:
+        design_spec = json.load(f)
 
-    print(f"🚀 Generating {num_designs} backbones from {target_pdb_path}")
+    print(f"🚀 Generating {num_designs} backbones")
+    print(f"   Design spec: {design_json_path}")
+    print(f"   Batch size: {diffusion_batch_size}")
+    print("")
 
     backbones = generate_backbones.remote(
-        target_pdb=target_pdb,
+        design_spec=design_spec,
         num_designs=num_designs,
+        diffusion_batch_size=diffusion_batch_size,
         output_dir=output_dir,
+        dump_trajectories=dump_trajectories,
     )
 
-    print(f"\n✅ Generation complete!")
+    print("")
+    print("✅ Generation complete!")
     print(f"   Output: {output_dir}")
     print(f"   Total backbones: {len(backbones)}")
+    print("")
+    print("Structures:")
+    for bb in backbones[:10]:  # Show first 10
+        print(f"   - {bb['example_id']}")
+
+    if len(backbones) > 10:
+        print(f"   ... and {len(backbones) - 10} more")
 
     return backbones
