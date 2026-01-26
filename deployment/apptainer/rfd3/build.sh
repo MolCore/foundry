@@ -1,7 +1,11 @@
 #!/bin/bash
 #
 # Build RFD3 Apptainer container on borg server
-# Usage: ./build.sh [--force]
+# Usage: ./build.sh [--force] [--deploy]
+#
+# Options:
+#   --force   : Rebuild even if container exists
+#   --deploy  : Deploy to versioned /runtime/containers after build
 #
 
 set -e
@@ -10,6 +14,25 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 CONTAINER_NAME="rfd3"
 CONTAINER_FILE="${SCRIPT_DIR}/Containerfile"
 OUTPUT_SIF="/runtime/containers/${CONTAINER_NAME}.sif"
+DEPLOY_MODE=false
+FORCE_BUILD=false
+
+# Parse arguments
+for arg in "$@"; do
+    case $arg in
+        --force)
+            FORCE_BUILD=true
+            ;;
+        --deploy)
+            DEPLOY_MODE=true
+            ;;
+        *)
+            echo "Unknown argument: $arg"
+            echo "Usage: $0 [--force] [--deploy]"
+            exit 1
+            ;;
+    esac
+done
 
 echo "========================================="
 echo "RFD3 Apptainer Container Build"
@@ -53,7 +76,7 @@ fi
 
 # Check if container already exists
 if [[ -f "$OUTPUT_SIF" ]]; then
-    if [[ "$1" == "--force" ]]; then
+    if [[ "$FORCE_BUILD" == true ]]; then
         echo "⚠️  Container exists. Removing old version (--force flag)"
         rm -f "$OUTPUT_SIF"
     else
@@ -96,10 +119,17 @@ if [[ -f "$OUTPUT_SIF" ]]; then
     echo "  Size: $(du -h "$OUTPUT_SIF" | cut -f1)"
     echo "  Build time: ${BUILD_TIME}s ($(($BUILD_TIME / 60))m $(($BUILD_TIME % 60))s)"
     echo ""
-    echo "Next steps:"
-    echo "  1. Validate container: ./validate.sh"
-    echo "  2. Run test: ./run_test.sh"
-    echo ""
+    if [[ "$DEPLOY_MODE" == true ]]; then
+        echo "Deploying to versioned containers..."
+        echo ""
+        "${SCRIPT_DIR}/deploy.sh" "$OUTPUT_SIF"
+    else
+        echo "Next steps:"
+        echo "  1. Validate container: ./validate.sh"
+        echo "  2. Run test: ./run_test.sh"
+        echo "  3. Deploy with versioning: ./deploy.sh $OUTPUT_SIF"
+        echo ""
+    fi
 else
     echo "❌ Build failed!"
     echo "========================================="

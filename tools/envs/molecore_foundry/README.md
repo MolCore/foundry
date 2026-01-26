@@ -1,196 +1,128 @@
-# `molecore_foundry` (uv) — cross-platform default bio environment
+# molecore_foundry Environment Specification
 
-This directory defines a **portable** environment spec you can use on:
+This directory defines a **portable uv environment specification** for foundry-based biomolecular modeling workflows.
 
-- **macOS (CPU)**: day-to-day bio + notebooks + visualization helpers
-- **Linux (GPU)**: same base env, with an **opt-in** CUDA PyTorch install path
+## What This Is
 
-It is designed to work well with the Foundry repo at:
-- `/Users/ariel/dev/molCore/foundry`
+A reusable Python environment package that includes:
+- Core scientific computing stack (numpy, scipy, pandas)
+- Biomolecular tooling (AtomWorks, Biotite)
+- PyTorch (CPU by default, upgrade to CUDA on GPU platforms)
+- Jupyter notebook support
+- Optional extras for agentic workflows, Modal cloud, and more
 
----
+This environment spec is designed to work across **macOS and Linux** platforms.
 
-## Prerequisites
-
-- Install `uv` (one-time).
-- **Recommended on macOS**: use **Python 3.12** for AtomWorks. Some AtomWorks dependencies
-  (notably `pyarrow==17` and some scientific wheels) may not be available for Python 3.13+ on macOS.
-
----
-
-## Create the environment
-
-Choose where you want the env to live. Recommended: `~/.venvs/molecore_foundry`.
+## Quick Install
 
 ```bash
+# Install uv (if not already installed)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Create environment using this spec
 uv python install 3.12
 uv venv ~/.venvs/molecore_foundry --python 3.12
 source ~/.venvs/molecore_foundry/bin/activate
+
+# Install the environment package
+uv pip install -e /path/to/foundry/tools/envs/molecore_foundry
 ```
 
-Install the base utilities:
+## What's Included
+
+### Core Dependencies (Always Installed)
+- **atomworks** - Unified biomolecular structure processing
+- **biotite** - Computational biology toolkit
+- **torch** - Machine learning (CPU by default)
+- **numpy, scipy, pandas** - Scientific computing
+- **jupyterlab, ipykernel** - Interactive notebooks
+- **requests, httpx, pyyaml** - Utilities
+
+See `pyproject.toml` for the complete dependency specification.
+
+### Optional Extras
+
+Install additional dependency groups as needed:
 
 ```bash
-uv pip install -e /Users/ariel/dev/molCore/foundry/tools/envs/molecore_foundry
+# AtomWorks ML capabilities (pulls additional ML deps)
+uv pip install "molecore-foundry-env[atomworks_ml]"
+
+# Agentic workflow tools (OpenAI, Anthropic, Groq SDKs)
+uv pip install "molecore-foundry-env[agentic]"
+
+# Modal cloud client
+uv pip install "molecore-foundry-env[modal]"
+
+# All optional extras
+uv pip install "molecore-foundry-env[all]"
 ```
 
-This base install now includes **AtomWorks + Biotite + Torch** by default.
+## Platform-Specific Setup
 
----
+This environment spec is **platform-agnostic**. For platform-specific instructions (GPU setup, database mirrors, visualization tools), see:
 
-## Install Foundry into this environment (optional)
+- **[macOS Local Setup](../../docs/platforms/macos-local.md)** - Development with PyMOL, CPU-only
+- **[Linux + NVIDIA Setup](../../docs/platforms/linux-nvidia.md)** - CUDA PyTorch, GPU compute
+- **[Modal Cloud Setup](../../docs/platforms/modal-cloud.md)** - Serverless production pipelines
 
-### Option A: editable install (when developing locally)
+### Key Platform Differences
 
+| Aspect | macOS | Linux GPU | Modal Cloud |
+|--------|-------|-----------|-------------|
+| PyTorch | CPU (default) | **Upgrade to CUDA** | Baked into image |
+| PyMOL | Install via Homebrew | Not needed | Not needed |
+| Databases | Mounted network paths | Direct filesystem | Volume or on-demand |
+
+**GPU platforms:** After installing this environment, upgrade PyTorch to CUDA:
 ```bash
-uv pip install -e "/Users/ariel/dev/molCore/foundry[all]"
+uv pip install --upgrade torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
 ```
 
-### Option B: pip install released package
+## Using with Foundry
 
+After setting up this environment, install Foundry itself:
+
+### Option A: Editable Install (Development)
+```bash
+uv pip install -e "/path/to/foundry[all,dev]"
+```
+
+### Option B: Released Package
 ```bash
 uv pip install "rc-foundry[all]"
 ```
 
----
+## Machine-Specific Configuration
 
-## Linux GPU: CUDA PyTorch (opt-in)
+**Database mirrors, paths, and other machine-specific settings belong in `.envrc.local`**, not committed to git.
 
-### Why opt-in?
+See [SYSTEM.md](../../SYSTEM.md) for the cross-platform coordination pattern using direnv.
 
-Package managers (pip/uv) **cannot reliably auto-detect** your server’s driver/CUDA runtime and choose the “right” CUDA wheel at resolution time. The robust pattern is:
-
-- install the env normally (CPU-safe everywhere)
-- on GPU machines, explicitly install CUDA-enabled PyTorch
-
-### Recommended default
-
-Prefer **cu124** (or **cu121** if your fleet is older). Your driver reports CUDA 12.9 capability, so it should run cu124/cu121 wheels.
-
-Example (choose one):
-
+Example `.envrc.local`:
 ```bash
-# cu124 (recommended)
-uv pip install --upgrade torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+# Linux GPU server
+export CCD_MIRROR_PATH="/runtime/databases/foundry/ccd"
+export PDB_MIRROR_PATH="/runtime/databases/foundry/pdb"
 
-# or cu121
-uv pip install --upgrade torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+# macOS with mounted databases
+export CCD_MIRROR_PATH="$HOME/mounts/runtime/databases/foundry/ccd"
+export PDB_MIRROR_PATH="$HOME/mounts/runtime/databases/foundry/pdb"
 ```
 
-If you want a fully automatic “pick a CUDA wheel based on `nvidia-smi`”, that generally requires a small wrapper script (because the package resolver itself doesn’t see runtime driver state). If you want that, we can add a `scripts/install_torch_cuda.py` later.
+## Package Maintenance
 
-Sanity check:
+This is a **meta-package** - it doesn't contain code, just dependency specifications.
 
-```bash
-python -c "import torch; print('torch', torch.__version__); print('cuda?', torch.cuda.is_available()); print('device', torch.cuda.get_device_name(0) if torch.cuda.is_available() else None)"
-```
+To update dependencies:
+1. Edit `pyproject.toml`
+2. Test on both macOS and Linux
+3. Commit changes to the repository
 
----
+The package is installed in **editable mode** (`-e`), so changes to dependencies take effect immediately after reinstalling.
 
-## PyRosetta (optional; works on this Linux server with Python 3.12)
+## For More Information
 
-PyRosetta distribution is **platform + Python-version specific** (prebuilt binaries). On this Linux
-server, we verified that `pyrosetta-installer` can install a **Python 3.12** wheel successfully.
-
-### Install (global env or any active venv)
-
-```bash
-uv pip install --upgrade pyrosetta-installer
-python -c "import pyrosetta_installer; pyrosetta_installer.install_pyrosetta(silent=False, skip_if_installed=True)"
-python -c "import pyrosetta; pyrosetta.init('-mute all'); print('PyRosetta OK')"
-```
-
-Notes:
-- This is a **large download** (~GB).
-- You may need RosettaCommons/PyRosetta credentials configured (often via `~/.netrc`) depending on your setup.
-- If install fails on a different machine/OS, it usually means **no matching prebuilt build exists** for that
-  platform/Python combination. In that case, use a dedicated env for a supported Python version.
-
----
-
-## AtomWorks (recommended)
-
-Foundry relies on AtomWorks; it’s also very useful as a “daily driver” for structure IO/cleanup.
-See [`RosettaCommons/atomworks`](https://github.com/RosettaCommons/atomworks).
-
-### AtomWorks database mirrors (CCD / PDB)
-
-Some `atomworks` functionality expects local mirrors. These are **machine-specific paths** and should
-not be committed into the repo.
-
-- **Recommended repo pattern**:
-  - copy `/Users/ariel/dev/molCore/foundry/.envrc.local.example` → `.envrc.local`
-  - edit paths for your machine
-  - run `direnv allow` in the repo root
-
-On Ariel's macOS setup:
-`$HOME/mounts/runtime/databases/foundry/{ccd,pdb}`
-
-- Installed by default (IO-only; no torch requirement):
-
-```bash
-uv pip install -e /Users/ariel/dev/molCore/foundry/tools/envs/molecore_foundry
-```
-
-- ML-enabled (pulls torch):
-
-```bash
-uv pip install "molecore-foundry-env[atomworks_ml]"
-```
-
----
-
-## PyMOL (installed via wrapper)
-
-**Status: ✅ Python wrapper included**
-
-The environment includes `pymolPy3` - a Python wrapper that allows scripting PyMOL when PyMOL itself is installed separately.
-
-### Setup
-1. **Install PyMOL system-wide** (outside this environment):
-   - macOS: `brew install pymol` (Homebrew)
-   - Linux: `conda install -c conda-forge pymol-bundle` or system packages
-
-2. **Use the wrapper** for Python scripting:
-   ```python
-   import pymolPy3
-   pm = pymolPy3.pymolPy3()
-   pm("load my_structure.pdb")
-   ```
-
-### Alternative: Pure Python visualization
-For notebook-friendly 3D visualization without external PyMOL:
-
-```bash
-uv pip install py3Dmol nglview
-```
-
----
-
-## Agentic workflows + Modal (optional)
-
-If you want agentic scripting + cloud execution:
-
-- Agentic tooling (SDKs + helpers):
-
-```bash
-uv pip install "molecore-foundry-env[agentic]"
-```
-
-- Modal client (serverless GPU/CPU from Python):
-
-```bash
-uv pip install "molecore-foundry-env[modal]"
-```
-
-Modal reference: [`modal` on PyPI](https://pypi.org/pypi/modal)
-
----
-
-## What’s included?
-
-See:
-- `PACKAGES.md` for a curated list (from your old env + Foundry + suggestions)
-- `pyproject.toml` for the actual dependency groups
-
-
+- **Platform setup guides**: See [docs/platforms/](../../docs/platforms/)
+- **Cross-platform patterns**: See [SYSTEM.md](../../SYSTEM.md)
+- **Package contents**: See `PACKAGES.md` for curated package list and rationale

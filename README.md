@@ -9,6 +9,19 @@ All models within Foundry rely on [AtomWorks](https://github.com/RosettaCommons/
 > We have a slack now! Join for updates and to get your questions answered [here](https://join.slack.com/t/proteinmodelfoundry/shared_invite/zt-3kpwru8c6-nrmTW6LNHnSE7h16GNnfLA).
 
 ## Getting Started
+
+### Platform-Specific Setup
+
+This fork supports multiple platforms with tailored setup instructions:
+
+- **[macOS Local](docs/platforms/macos-local.md)**: Development with CPU, PyMOL visualization
+- **[Linux + NVIDIA GPUs](docs/platforms/linux-nvidia.md)**: Large-scale compute with CUDA
+- **[Modal Cloud](docs/platforms/modal-cloud.md)**: Serverless production pipelines
+
+For cross-platform coordination (using the same repo across multiple machines), see [SYSTEM.md](SYSTEM.md).
+
+→ **[Platform Setup Guide](docs/platforms/)** for detailed instructions
+
 ### Quickstart guide
 **Installation**
 ```bash

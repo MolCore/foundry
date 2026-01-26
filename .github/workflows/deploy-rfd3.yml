@@ -1,0 +1,377 @@
+name: Deploy RFD3 Container
+
+on:
+  push:
+    branches:
+      - production
+    paths:
+      - 'models/rfd3/**'
+      - 'deployment/apptainer/rfd3/**'
+      - 'deployment/modal/rfd3/**'
+      - '.github/workflows/deploy-rfd3.yml'
+  workflow_dispatch:
+    inputs:
+      force_rebuild:
+        description: 'Force rebuild even if container exists'
+        required: false
+        type: boolean
+        default: false
+  schedule:
+    # Weekly rebuild on Sundays at 2 AM UTC
+    - cron: '0 2 * * 0'
+
+env:
+  MODEL_NAME: rfd3
+  CONTAINER_PATH: /runtime/containers/rfd3.sif
+  LATEST_CONTAINER_PATH: /runtime/containers/rfd3_latest.sif
+  METADATA_PATH: /runtime/containers/rfd3.json
+
+jobs:
+  #############################################################################
+  # JOB 1: Build Apptainer Container
+  #############################################################################
+  build-apptainer:
+    name: Build Apptainer Container
+    runs-on: self-hosted  # GitHub runner on borg server
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for git commit info
+
+      - name: Setup environment
+        run: |
+          echo "Build triggered by: ${{ github.event_name }}"
+          echo "Git commit: ${{ github.sha }}"
+          echo "Branch: ${{ github.ref_name }}"
+
+      - name: Verify Apptainer installation
+        run: |
+          apptainer --version
+          echo "Runner user: $(whoami)"
+          echo "Runner hostname: $(hostname)"
+
+      - name: Verify runtime directories
+        run: |
+          ls -la /runtime/
+          ls -la /runtime/containers/ || echo "Containers directory will be created"
+          ls -la /runtime/databases/foundry/pdb/ | head -10
+          ls -la /runtime/databases/foundry/ccd/ | head -10
+
+      - name: Build container
+        working-directory: deployment/apptainer/${{ env.MODEL_NAME }}
+        run: |
+          echo "Building ${{ env.MODEL_NAME }} container..."
+
+          # Determine if force rebuild
+          FORCE_FLAG=""
+          if [[ "${{ github.event.inputs.force_rebuild }}" == "true" ]] || [[ "${{ github.event_name }}" == "schedule" ]]; then
+            FORCE_FLAG="--force"
+            echo "Force rebuild enabled"
+          fi
+
+          chmod +x build.sh
+          ./build.sh $FORCE_FLAG
+
+      - name: Validate container infrastructure
+        working-directory: deployment/apptainer/${{ env.MODEL_NAME }}
+        run: |
+          echo "Validating container infrastructure..."
+          chmod +x validate.sh
+          ./validate.sh
+
+      - name: Run test inference (num=2)
+        working-directory: deployment/apptainer/${{ env.MODEL_NAME }}
+        run: |
+          echo "Running test inference..."
+          chmod +x run_test.sh
+          ./run_test.sh
+
+      - name: Validate test outputs
+        working-directory: deployment/apptainer/${{ env.MODEL_NAME }}
+        run: |
+          echo "Validating test outputs..."
+          chmod +x validate_outputs.sh
+
+          # Find latest output directory
+          LATEST_OUTPUT=$(ls -td outputs/rfd3_test_* 2>/dev/null | head -1)
+
+          if [[ -z "$LATEST_OUTPUT" ]]; then
+            echo "❌ ERROR: No test output directory found"
+            exit 1
+          fi
+
+          echo "Validating: $LATEST_OUTPUT"
+          ./validate_outputs.sh "$LATEST_OUTPUT"
+
+      - name: Deploy to versioned containers
+        working-directory: deployment/apptainer/${{ env.MODEL_NAME }}
+        run: |
+          echo "Deploying to versioned containers..."
+          chmod +x deploy.sh
+          ./deploy.sh "${{ env.CONTAINER_PATH }}" "${{ github.sha }}"
+
+      - name: Extract container metadata
+        id: metadata
+        run: |
+          # Read metadata from deployed JSON
+          METADATA_FILE="${{ env.METADATA_PATH }}"
+
+          if [[ ! -f "$METADATA_FILE" ]]; then
+            echo "❌ ERROR: Metadata file not found: $METADATA_FILE"
+            exit 1
+          fi
+
+          # Extract fields using Python
+          eval "$(python3 -c "
+import json
+import sys
+
+with open('$METADATA_FILE') as f:
+    data = json.load(f)
+
+print(f\"VERSION_UUID={data['version']['uuid']}\")
+print(f\"CONTAINER_SIZE={data['container']['size']}\")
+print(f\"CONTAINER_HASH={data['container']['hash']}\")
+print(f\"BUILD_DATE={data['version']['build_date']}\")
+print(f\"PYTHON_VERSION={data['environment']['python_version']}\")
+print(f\"PYTORCH_VERSION={data['environment']['pytorch_version']}\")
+print(f\"CUDA_VERSION={data['environment']['cuda_version']}\")
+          ")"
+
+          # Set outputs
+          echo "version_uuid=$VERSION_UUID" >> $GITHUB_OUTPUT
+          echo "container_size=$CONTAINER_SIZE" >> $GITHUB_OUTPUT
+          echo "container_hash=$CONTAINER_HASH" >> $GITHUB_OUTPUT
+          echo "build_date=$BUILD_DATE" >> $GITHUB_OUTPUT
+          echo "python_version=$PYTHON_VERSION" >> $GITHUB_OUTPUT
+          echo "pytorch_version=$PYTORCH_VERSION" >> $GITHUB_OUTPUT
+          echo "cuda_version=$CUDA_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Upload test artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: rfd3-test-outputs-${{ github.sha }}
+          path: |
+            deployment/apptainer/${{ env.MODEL_NAME }}/outputs/
+          retention-days: 30
+
+      - name: Summary
+        run: |
+          echo "### ✅ Container Build Successful" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Model:** ${{ env.MODEL_NAME }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Version UUID:** ${{ steps.metadata.outputs.version_uuid }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Git Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Build Date:** ${{ steps.metadata.outputs.build_date }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment:**" >> $GITHUB_STEP_SUMMARY
+          echo "- Python: ${{ steps.metadata.outputs.python_version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- PyTorch: ${{ steps.metadata.outputs.pytorch_version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- CUDA: ${{ steps.metadata.outputs.cuda_version }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Container:**" >> $GITHUB_STEP_SUMMARY
+          echo "- Path: \`${{ env.LATEST_CONTAINER_PATH }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Size: $(numfmt --to=iec-i --suffix=B ${{ steps.metadata.outputs.container_size }})" >> $GITHUB_STEP_SUMMARY
+          echo "- Hash: \`${{ steps.metadata.outputs.container_hash }}\`" >> $GITHUB_STEP_SUMMARY
+
+    outputs:
+      version_uuid: ${{ steps.metadata.outputs.version_uuid }}
+      container_size: ${{ steps.metadata.outputs.container_size }}
+      container_hash: ${{ steps.metadata.outputs.container_hash }}
+      build_date: ${{ steps.metadata.outputs.build_date }}
+      python_version: ${{ steps.metadata.outputs.python_version }}
+      pytorch_version: ${{ steps.metadata.outputs.pytorch_version }}
+      cuda_version: ${{ steps.metadata.outputs.cuda_version }}
+
+  #############################################################################
+  # JOB 2: Deploy Modal App (Future)
+  #############################################################################
+  deploy-modal:
+    name: Deploy Modal App
+    runs-on: ubuntu-latest
+    needs: build-apptainer
+    if: false  # Disabled until Modal implementation ready
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Modal
+        run: |
+          pip install modal
+
+      - name: Configure Modal credentials
+        run: |
+          modal token set \
+            --token-id ${{ secrets.MODAL_TOKEN_ID }} \
+            --token-secret ${{ secrets.MODAL_TOKEN_SECRET }}
+
+      - name: Deploy Modal app
+        working-directory: deployment/modal/${{ env.MODEL_NAME }}
+        run: |
+          echo "Deploying ${{ env.MODEL_NAME }} to Modal..."
+          modal deploy app.py
+
+      - name: Test Modal deployment
+        working-directory: deployment/modal/${{ env.MODEL_NAME }}
+        run: |
+          echo "Running Modal test inference..."
+          modal run app.py::test_inference
+
+  #############################################################################
+  # JOB 3: Update Workflow Registry
+  #############################################################################
+  update-workflow-registry:
+    name: Update Workflow Registry
+    runs-on: ubuntu-latest
+    needs: build-apptainer
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout workflow repository
+        uses: actions/checkout@v4
+        with:
+          repository: MolCore/workflow
+          token: ${{ secrets.WORKFLOW_REPO_TOKEN }}
+          path: workflow
+
+      - name: Create registry directory
+        working-directory: workflow
+        run: |
+          mkdir -p containers/registry
+
+      - name: Update container registry
+        working-directory: workflow
+        run: |
+          cat > containers/registry/${{ env.MODEL_NAME }}.json <<EOF
+          {
+            "model": "${{ env.MODEL_NAME }}",
+            "version": {
+              "uuid": "${{ needs.build-apptainer.outputs.version_uuid }}",
+              "git_commit": "${{ github.sha }}",
+              "build_date": "${{ needs.build-apptainer.outputs.build_date }}"
+            },
+            "container": {
+              "path": "${{ env.LATEST_CONTAINER_PATH }}",
+              "size": ${{ needs.build-apptainer.outputs.container_size }},
+              "hash": "${{ needs.build-apptainer.outputs.container_hash }}"
+            },
+            "environment": {
+              "python_version": "${{ needs.build-apptainer.outputs.python_version }}",
+              "pytorch_version": "${{ needs.build-apptainer.outputs.pytorch_version }}",
+              "cuda_version": "${{ needs.build-apptainer.outputs.cuda_version }}"
+            },
+            "platforms": {
+              "apptainer": {
+                "available": true,
+                "location": "borg:${{ env.LATEST_CONTAINER_PATH }}",
+                "metadata": "borg:${{ env.METADATA_PATH }}"
+              },
+              "modal": {
+                "available": false,
+                "deployment": "foundry-rfd3",
+                "status": "not_yet_implemented"
+              }
+            },
+            "repository": {
+              "url": "https://github.com/MolCore/foundry",
+              "branch": "${{ github.ref_name }}",
+              "commit": "${{ github.sha }}"
+            }
+          }
+          EOF
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.WORKFLOW_REPO_TOKEN }}
+          path: workflow
+          commit-message: "Update ${{ env.MODEL_NAME }} container registry (UUID: ${{ needs.build-apptainer.outputs.version_uuid }})"
+          branch: update-${{ env.MODEL_NAME }}-${{ github.sha }}
+          title: "Update ${{ env.MODEL_NAME }} container to ${{ github.sha }}"
+          body: |
+            ## 🤖 Automated Container Update
+
+            **Model**: `${{ env.MODEL_NAME }}`
+            **Version UUID**: `${{ needs.build-apptainer.outputs.version_uuid }}`
+            **Git Commit**: `${{ github.sha }}`
+            **Build Date**: ${{ needs.build-apptainer.outputs.build_date }}
+
+            ### Container Details
+            - **Path**: `${{ env.LATEST_CONTAINER_PATH }}`
+            - **Size**: ${{ needs.build-apptainer.outputs.container_size }} bytes ($(numfmt --to=iec-i --suffix=B ${{ needs.build-apptainer.outputs.container_size }}))
+            - **Hash**: `${{ needs.build-apptainer.outputs.container_hash }}`
+
+            ### Environment
+            - **Python**: ${{ needs.build-apptainer.outputs.python_version }}
+            - **PyTorch**: ${{ needs.build-apptainer.outputs.pytorch_version }}
+            - **CUDA**: ${{ needs.build-apptainer.outputs.cuda_version }}
+
+            ### Deployments
+            - ✅ **Apptainer**: `borg:${{ env.LATEST_CONTAINER_PATH }}`
+            - ⏸️  **Modal**: Not yet implemented
+
+            ### Previous Version
+            Previous version archived to `/runtime/containers/legacy/`
+
+            ### Testing
+            - ✅ Container validation passed
+            - ✅ Test inference (num=2) passed
+            - ✅ Output validation passed
+
+            ---
+            This PR updates the workflow registry with the latest container metadata.
+            Merge to make this version available to all workflows.
+
+  #############################################################################
+  # JOB 4: Cleanup Old Legacy Versions
+  #############################################################################
+  cleanup-legacy:
+    name: Cleanup Old Legacy Containers
+    runs-on: self-hosted
+    needs: build-apptainer
+    if: github.event_name == 'schedule'  # Only on scheduled builds
+    timeout-minutes: 10
+
+    steps:
+      - name: Cleanup old legacy containers
+        run: |
+          LEGACY_DIR="/runtime/containers/legacy"
+          KEEP_VERSIONS=5
+
+          echo "Cleaning up legacy containers..."
+          echo "Keeping most recent $KEEP_VERSIONS versions"
+
+          # Count current legacy versions
+          LEGACY_COUNT=$(ls -1 "$LEGACY_DIR"/${{ env.MODEL_NAME }}_*.sif 2>/dev/null | wc -l)
+          echo "Found $LEGACY_COUNT legacy versions"
+
+          if [[ $LEGACY_COUNT -gt $KEEP_VERSIONS ]]; then
+            REMOVE_COUNT=$((LEGACY_COUNT - KEEP_VERSIONS))
+            echo "Removing $REMOVE_COUNT oldest versions..."
+
+            # Remove oldest versions (keep newest KEEP_VERSIONS)
+            ls -1t "$LEGACY_DIR"/${{ env.MODEL_NAME }}_*.sif | tail -n +$((KEEP_VERSIONS + 1)) | while read old_file; do
+              echo "  Removing: $old_file"
+              rm -f "$old_file"
+
+              # Also remove corresponding JSON if it exists
+              json_file="${old_file%.sif}.json"
+              if [[ -f "$json_file" ]]; then
+                rm -f "$json_file"
+              fi
+            done
+
+            echo "✓ Cleanup complete"
+          else
+            echo "No cleanup needed (only $LEGACY_COUNT versions)"
+          fi
