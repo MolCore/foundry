@@ -4,7 +4,7 @@ wandb:
   _target_: wandb.integration.lightning.fabric.WandbLogger
   save_dir: ${paths.output_dir}
   name: ${name}
-  offline: False
+  offline: True  # security: prevent telemetry exfiltration of training metadata
   id: null # pass correct id (along with checkpoint path, and resume='allow' or 'must') to resume a run
   anonymous: null # enable anonymous logging
   project: ${project}
