@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+build/
+dist/
+# generated structures / sessions / images / logs (data, not code)
+outputs/
+*.cif
+*.cif.gz
+*.pdb
+*.pse
+*.png
+*.log
