@@ -3,7 +3,8 @@
 **Living record** of the screw-symmetry effort: decisions, findings, current
 state, and open follow-ups — so anyone (or a future session) can resume with
 full context. Append significant items here. Polished technical detail lives in
-`REPORT_RFD3_screw_symmetry.md`; this file is the running log.
+`REPORT_RFD3_screw_symmetry.md`; the exact stock-vs-branch diff (concept + code,
+with stock line refs) is in `CHANGES_vs_RFD3.md`; this file is the running log.
 
 _Last updated: 2026-06-13._
 
@@ -81,6 +82,18 @@ its groove neighbours** (lateral n±1 + the two turn neighbours n±⌊t⌋, n±�
     (`partial_t`) to refine — a more complex pipeline (partial diffusion +
     symmetric input + conditioning + the overlay patches) of uncertain composition,
     not yet built.
+18. **RFD3's symmetry machinery already round-trips a per-frame translation
+    end-to-end** (source-confirmed, writing `CHANGES_vs_RFD3.md`). `RTs_to_framecoords`
+    sets `Ori=t`; `framecoords_to_RTs` sets `T=Ori`; `apply_symmetry_to_xyz_atomwise`
+    (`symmetry_utils.py:328`) applies `asu@R + t` and re-centres the assembly each
+    step (so radius is emergent for free). The ONLY stock gaps are: no native
+    generator emits a translation (`get_cyclic_frames` hardcodes `t=(0,0,0)`,
+    `frames.py:251`) and `get_frames_from_file` is `NotImplementedError`
+    (`frames.py:531`). **Implication:** the `frames.py` get_cyclic_frames patch is
+    the *core* enabler — with axial-only `t` the stock projection already produces a
+    correct emergent screw; the `projection.py` override is load-bearing only for the
+    value-add controls (`r_target`, `contact_mode`), which the no-grad sampler has no
+    other hook for (finding for the native-integration touchpoints table).
 
 ## Current state
 

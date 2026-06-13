@@ -98,3 +98,9 @@ Pure overlay (monkey-patches): RFD3 source (vendored in `MolCore/foundry`) is
 unmodified. Built by reverse-engineering RFD3's symmetry path; the full
 development trail, design rationale, and validation results are in
 `docs/REPORT_RFD3_screw_symmetry.md`.
+
+- `docs/CHANGES_vs_RFD3.md` — exactly what changed, conceptually and in code, vs.
+  stock RFD3 (what is unique to this branch), with stock line references and the
+  native-integration touchpoints.
+- `docs/REPORT_RFD3_screw_symmetry.md` — full design, parameters, validation.
+- `docs/PROGRESS.md` — running log: findings, current state, open follow-ups.
