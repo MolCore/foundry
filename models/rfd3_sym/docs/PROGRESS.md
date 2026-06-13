@@ -71,6 +71,16 @@ its groove neighbours** (lateral n±1 + the two turn neighbours n±⌊t⌋, n±�
     L improved coordination (groove=Y 2/4 → 4/4) but not the trade-off.
 16. **VRAM** (L40S, low_memory): ≈ 5.6·(res/700)^1.7 GB → **max ≈ 2300 residues**;
     full attention OOMs above ~500 res even on 48 GB.
+17. **Interface conditioning (hotspots/RASA) needs an input structure.** Probe:
+    adding `select_buried` to a length-only symmetric design fails at parse with
+    `"Atom array input must be provided before parsing selections"`. These are
+    target/PPI tools (`select_buried→rasa_bin=0`, `select_hotspots→is_atom_level_hotspot`)
+    and reference residues of an INPUT pdb — they **cannot condition de-novo
+    symmetric generation**. The only route is a **two-pass**: feed a prior fiber
+    as input, mark its interface residues buried/hotspot, and **partial-diffuse**
+    (`partial_t`) to refine — a more complex pipeline (partial diffusion +
+    symmetric input + conditioning + the overlay patches) of uncertain composition,
+    not yet built.
 
 ## Current state
 
@@ -85,14 +95,21 @@ its groove neighbours** (lateral n±1 + the two turn neighbours n±⌊t⌋, n±�
 
 ## Open follow-ups / next levers (ranked)
 
-1. **Interface conditioning** — `select_hotspots` / RASA-buried (both exposed in
-   dialect-2) to design shape-complementary, helix-faced interfaces that pack
-   clash-free in all three directions. *The next real lever.*
-2. **β route** — a twisted β-sheet packs clash-free + aligns at any twist (the
+1. **Accept a 2-of-3 corner** (e.g. clean+grooved tube) → **ProteinMPNN + relax**
+   for sequence/interface chemistry. The pragmatic path to a usable designed
+   fiber now. *Recommended.*
+2. **Two-pass interface conditioning** — input a prior fiber, `select_buried`/
+   hotspots on its interface residues, `partial_t` to refine. The ONLY way to use
+   RASA/hotspots (they need an input structure; finding 17). Uncertain it composes
+   with the symmetry overlay; a research gamble.
+3. **β route** — a twisted β-sheet packs clash-free + aligns at any twist (the
    natural fiber answer); blocked by `is_sheet` being legacy-dialect only.
-3. **Accept a 2-of-3 corner** (e.g. clean+grooved tube) → ProteinMPNN + relax for
-   sequence/interface chemistry.
 4. Native integration (the 4 touchpoints) if/when upstreaming to RFD3.
+
+NOTE: de-novo interface conditioning (`select_hotspots`/RASA on a length-only
+symmetric chain) is NOT possible — finding 17. Geometry levers (R, L) are
+exhausted (finding 15). The all-3-aligned wall is a subunit/interface-design
+problem with no clean de-novo knob in RFD3.
 
 ## Standing decisions / conventions
 
