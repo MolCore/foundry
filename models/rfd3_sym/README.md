@@ -52,6 +52,20 @@ sym_id, info = rfd3_sym.install_screw_symmetry(
 wrap this end-to-end; `runners/double_screw.py` extends a fibre to 2× length
 by applying the recovered screw operator `Sⁿ` to a copy.
 
+## Examples
+
+Runnable, smallest prereq first — see `examples/` (and `examples/README.md`):
+
+```bash
+python examples/00_geometry.py                  # no GPU: geometry + install check
+bash   examples/01_hollow_tube_local.sh         # local GPU: clean hollow tube (spt5_R20_L70_n10)
+bash   examples/02_staggered_groove_modal.sh    # Modal L40S: staggered groove (spt6.5, close-pack)
+bash   examples/03_fractional_contact_local.sh  # local GPU: contact controller (spt3.5)
+bash   examples/04_extend_2x.sh <fiber.pdb>     # no GPU: extend a fibre to 2x length
+```
+
+Each generation script prints the full output paths and scores the result.
+
 ## Parameter reference
 
 Free inputs are **{subunits_per_turn, subunit length L}**; everything geometric

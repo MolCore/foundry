@@ -19,7 +19,9 @@ import modal
 
 app = modal.App("foundry-rfd3-tube")
 
-LOCAL_PKG_DIR = Path("/home/arielbs10/molCore/projects/rfd3_sym/rfd3_sym").resolve()
+# The rfd3_sym package, resolved relative to this file (runners/ -> ../rfd3_sym),
+# so the runner works from any checkout location.
+LOCAL_PKG_DIR = (Path(__file__).resolve().parent.parent / "rfd3_sym")
 
 # Same image definition as the working helical app -> Modal reuses cached layers.
 rfd3_image = (
