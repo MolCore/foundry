@@ -30,8 +30,11 @@ present, aligned_all, clash = set(), True, 0
 for j, cj in enumerate(chains):
     if j == c: continue
     D = np.linalg.norm(ca[cc][:, None] - ca[cj][None], axis=-1)
+    # NOTE: inter-subunit heavy-atom overlap. 2.0 A badly under-counts residue-level
+    # clashes (a 451-RFD3-clash structure can have ~4 pairs <2 A). Use 2.7 A as a
+    # proxy, but RFD3's own n_clashing.* metric is authoritative — always cross-check.
     hvD = np.linalg.norm(hv[cc][:, None] - hv[cj][None], axis=-1).min()
-    if hvD < 2.0: clash += 1
+    if hvD < 2.7: clash += 1
     if D.min() >= cut: continue
     o = abs(j - c); present.add(o)
     ci = np.where(D.min(1) < cut)[0]; ni = np.where(D.min(0) < cut)[0]
